@@ -1,0 +1,209 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport"
+          content="width=device-width, user-scalable=no, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0">
+    <meta http-equiv="X-UA-Compatible" content="ie=edge">
+    <title>Document</title>
+    <script src="https://code.jquery.com/jquery-3.7.1.js" integrity="sha256-eKhayi8LEQwp4NKxN+CfCh+3qOVUtJn3QNZ0TciWLP4=" crossorigin="anonymous"></script>
+    <script src="https://api-maps.yandex.ru/2.1/?apikey=8088e5de-2df4-4a23-b1cf-ed179d8f9d57&lang=ru_RU&coordorder=longlat" type="text/javascript"></script>
+    <style>
+        html, body, #map {
+            width: 100%; height: 100%; padding: 0; margin: 0;
+        }
+    </style>
+</head>
+<body>
+<div id="map"></div>
+<button onclick="showNearestMetro()">Show on Map</button>
+<button onclick="show()">Show on Map</button>
+<textarea id="addressTextArea" rows="5" cols="50"></textarea>
+<textarea id="AlreadyCompletedAddressTextArea" rows="5" cols="50"></textarea>
+
+<script>
+    // Подключение Yandex Maps API
+
+    let coordinates = [];
+    var myMap;
+    var referencePoints = [];
+    var referencePoints2 = [];
+    async function init() {
+
+        // Проверка, создана ли карта
+        if (!myMap) {
+            // Если карта не создана, создаем ее
+            myMap = new ymaps.Map("map", {
+                center: [37.64, 55.76], // Укажите центр карты по умолчанию
+                zoom: 10,
+                controls: []
+            });
+
+        } else {
+            // Если карта уже создана, обновляем ее параметры
+            myMap.geoObjects.removeAll(); // Удаляем все объекты с карты
+        }
+
+
+
+    }
+    async function show() {
+        var regionName = ["Москва, Южный административный округ", "Москва, Юго-Восточный административный округ", "Москва, Восточный административный округ"];
+
+        for (let i = 0; i < regionName.length; i++) {
+            let data = await getRegionData(regionName[i]);
+            if (data.length > 0 && "relation" === data[0].osm_type) {
+                let polygon = getRegion(data[0].geojson.coordinates);
+                console.log(data[0].geojson.coordinates)
+                myMap.geoObjects.add(polygon);
+            }
+        }
+    }
+
+    function getRegionData(region) {
+        var url = "http://nominatim.openstreetmap.org/search";
+        return fetch(url + "?q=" + region + "&format=json&polygon_geojson=1")
+            .then(response => {
+                if (!response.ok) {
+                    throw new Error('Network response was not ok');
+                }
+                return response.json();
+            })
+            .catch(error => {
+                console.error('There has been a problem with your fetch operation:', error);
+                return [];
+            });
+    }
+
+    function checkNestedCoordinates(coordinates) {
+        // Проверяем, является ли первый элемент массива также массивом
+        if (coordinates.length <= 1) {
+            return coordinates[0];
+        } else if (coordinates.length >= 2){
+            return coordinates[0][0];
+        }
+    }
+    function getRegion(coordinates) {
+        var coor = checkNestedCoordinates(coordinates)
+
+        // Создание полигона
+        var polygon = new ymaps.Polygon([coor], {
+            hintContent: "Регион",
+            balloonContent: "Регион"
+        }, {
+            fillColor: '#00FF00',
+            fillOpacity: 0.5,
+            strokeColor: '#0000FF',
+            strokeWidth: 5
+        });
+        return polygon;
+    }
+
+
+
+    function addPlacemarksToMap(coordinates, foundAddress, district) {
+
+        myMap.geoObjects.add(new ymaps.Placemark(coordinates, {
+            balloonContent: '<span>Информация по указанному адресу недоступна</span><br>' +
+                '<span>' + foundAddress + '</span>' +
+                '<br>' +
+                '<span>Округ: ' + district + '</span>', // Добавляем информацию о районе
+            iconCaption: foundAddress,
+
+        }, {
+            preset: 'islands#yellowGlyphIcon',
+            iconGlyph: 'certificate',
+            iconGlyphColor: 'yellow'
+        }));
+    }
+
+
+    function addPlacemarksToMap2(coordinates, foundAddress, district) {
+
+
+        myMap.geoObjects.add(new ymaps.Placemark(coordinates, {
+            balloonContent: '<span>Информация по указанному адресу недоступна</span><br>' +
+                '<span>' + foundAddress + '</span>' +
+                '<br>' +
+                '<span>Округ: ' + district + '</span>', // Добавляем информацию о районе
+            iconCaption: foundAddress,
+
+        }, {
+            preset: 'islands#greenGlyphIcon',
+            iconGlyph: 'certificate',
+            iconGlyphColor: 'green'
+        }));
+    }
+
+
+    function geocodeAddress(address) {
+        return ymaps.geocode(address)
+            .then(function (res) {
+                var firstGeoObject = res.geoObjects.get(0);
+                var coordinates = firstGeoObject.geometry.getCoordinates();
+                var foundAddress = firstGeoObject.getAddressLine();
+                var metaData = firstGeoObject.properties.get('metaDataProperty');
+                var district = metaData.GeocoderMetaData.Address.Components[1]["name"]
+                console.log(metaData)
+                return { coordinates, foundAddress, district };
+            })
+            .catch(function (error) {
+                console.error('Ошибка при выполнении геокодирования:', error);
+            });
+    }
+
+
+
+
+
+
+    function showNearestMetro() {
+        var textareaContent = document.getElementById('addressTextArea').value;
+        var addresses = textareaContent.split('\n').map(function (address) {
+            referencePoints.push(address);
+            return address.trim();
+        });
+
+        var textareaContent2 = document.getElementById('AlreadyCompletedAddressTextArea').value;
+        var addresses2 = textareaContent2.split('\n').map(function (address2) {
+            referencePoints2.push(address2);
+            return address2.trim();
+        });
+
+
+        init();
+
+        addresses.forEach(function (address) {
+            geocodeAddress(address)
+                .then(function ({ coordinates, foundAddress, district }) {
+
+                    addPlacemarksToMap(coordinates, foundAddress, district);
+
+                });
+        });
+
+        addresses2.forEach(function (address2) {
+            geocodeAddress(address2)
+                .then(function ({ coordinates, foundAddress, district }) {
+
+                            addPlacemarksToMap2(coordinates, foundAddress, district);
+                        });
+
+        });
+
+
+    }
+
+    function showBuiltRoute() {
+        var multiRoute = new ymaps.multiRouter.MultiRoute({
+            referencePoints, params: {
+                // Тип маршрута: на общественном транспорте.
+                routingMode: "masstransit"
+            }
+        });
+        myMap.geoObjects.add(multiRoute);
+    }
+</script>
+
+</body>
+</html>
